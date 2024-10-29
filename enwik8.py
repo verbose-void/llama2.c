@@ -112,19 +112,14 @@ def get_tensor_enwik_data(subset: int = None, device: torch.device = torch.devic
 class RandomSliceDataset(torch.utils.data.Dataset):
     def __init__(self, data: torch.Tensor, context_len: int, randomized: bool = False, stride: int = None):
         assert len(data.shape) == 1
-        
-        target_len = context_len + 1
-        assert len(data) > context_len + target_len
-        assert target_len > 0
 
         self.randomized = randomized
         self.data = data
         self.context_len = context_len
-        self.target_len = target_len
         self.stride = stride if stride is not None else context_len
 
         # Calculate the number of valid starting indices
-        self.valid_start_indices = (len(data) - context_len - target_len) // self.stride + 1
+        self.valid_start_indices = (len(data) - context_len) // self.stride + 1
 
     def __len__(self):
         return self.valid_start_indices
@@ -133,19 +128,18 @@ class RandomSliceDataset(torch.utils.data.Dataset):
         if not self.randomized:
             start_idx = idx * self.stride
         else:
-            max_start = len(self.data) - self.context_len - self.target_len
+            max_start = len(self.data) - self.context_len
             start_idx = random.randint(0, max_start)
             # Adjust start_idx to the nearest valid strided index
             start_idx = (start_idx // self.stride) * self.stride
         
         ctx_end_i = start_idx + self.context_len
-        # tgt_end_i = ctx_end_i + self.target_len
 
         context = self.data[start_idx:ctx_end_i]
         target = self.data[start_idx + 1:ctx_end_i + 1]  # Right-shift target by one position
         
         assert len(context) == self.context_len, f"{len(context)} != {self.context_len}"
-        assert len(target) == self.target_len, f"{len(target)} != {self.target_len}"
+        assert len(target) == self.context_len, f"{len(target)} != {self.context_len}"
         return context, target.squeeze()
 
 
