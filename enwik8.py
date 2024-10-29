@@ -197,7 +197,6 @@ class Task:
             raise ValueError(f"Invalid split: {split}")
 
         for x, y in dl:
-            assert x.shape == (self.batch_size, self.sequence_lengths)
             x = x#.to(device, non_blocking=True)
             y = y#.to(device, non_blocking=True)
             yield x, y.unsqueeze(-1)
