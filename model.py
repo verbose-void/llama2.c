@@ -246,6 +246,15 @@ class Transformer(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
+    @torch.no_grad()
+    def calculate_bpc(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """Calculate the bits per character (BPC) given logits and targets."""
+        # calculate the negative log likelihood of the targets given the logits
+        nll = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1, reduction='mean')
+        # calculate the number of bits per character
+        bpc = nll / math.log(2)  # NOTE: bpc must be log base 2
+        return bpc
+
     def forward(self, tokens: torch.Tensor, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
@@ -265,6 +274,8 @@ class Transformer(nn.Module):
             # inference-time mini-optimization: only forward the output on the very last position
             logits = self.output(h[:, [-1], :]) # note: using list [-1] to preserve the time dim
             self.last_loss = None
+
+        self.last_bpc = self.calculate_bpc(logits, targets)
 
         return logits
 
