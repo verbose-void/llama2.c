@@ -35,7 +35,7 @@ from export import model_export
 # -----------------------------------------------------------------------------
 # I/O
 out_dir = "out"
-eval_interval = 2000
+eval_interval = 1000
 log_interval = 1
 eval_iters = 100
 eval_only = False  # if True, script exits right after the first eval
@@ -279,7 +279,6 @@ while True:
         metrics = estimate_loss()
         losses = metrics["losses"]
         bpcs = metrics["bpcs"]
-        running_train_bpcs.append(bpcs["train"].item())
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             try:
@@ -327,6 +326,7 @@ while True:
             logits = model(X, Y)
             loss = raw_model.last_loss
             loss = loss / gradient_accumulation_steps
+            running_train_bpcs.append(model.last_bpc)
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = next(train_batch_iter)
         # backward pass, with gradient scaling if training in fp16
@@ -352,10 +352,10 @@ while True:
             mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
             running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
 
-        # bpc = bpcs
-        bpc = running_train_bpcs[-1]
+        bpc = sum(running_train_bpcs[-10:]) / len(running_train_bpcs[-10:])
+
         print(
-            f"{iter_num} | loss {lossf:.4f} | lr {lr:e} | {dt*1000:.2f}ms | mfu {running_mfu*100:.2f}% | last train bpc {bpc:.4f}"
+            f"{iter_num} | loss {lossf:.4f} | lr {lr:e} | {dt*1000:.2f}ms | mfu {running_mfu*100:.2f}% | bpc {bpc:.4f}"
         )
     iter_num += 1
     local_iter_num += 1
