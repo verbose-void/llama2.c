@@ -197,8 +197,17 @@ class TransformerBlock(nn.Module):
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
+        self.residual_cross_attn = torch.nn.MultiheadAttention(embed_dim=args.dim, num_heads=args.n_heads)
+
     def forward(self, x, freqs_cos, freqs_sin):
-        h = x + self.attention.forward(self.attention_norm(x), freqs_cos, freqs_sin)
+        # h = x + self.attention.forward(self.attention_norm(x), freqs_cos, freqs_sin)
+
+        # cross-attend the residuals
+        h = self.attention.forward(self.attention_norm(x), freqs_cos, freqs_sin)
+        h = self.residual_cross_attn.forward(
+            h, h, x,
+        )
+
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out
 
