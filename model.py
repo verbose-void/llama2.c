@@ -206,7 +206,8 @@ class TransformerBlock(nn.Module):
         self.dim = args.dim
         self.head_dim = args.dim // args.n_heads
         # self.attention = Attention(args)
-        self.attention = FeedForwardAttention(args)
+        # self.attention = FeedForwardAttention(args)
+        self.attention = FeedForward(args.dim, args.hidden_dim, args.multiple_of, args.dropout)
         self.feed_forward = FeedForward(
             dim=args.dim,
             hidden_dim=args.hidden_dim,
