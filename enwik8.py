@@ -97,16 +97,16 @@ def get_tensor_enwik_data(subset: int = None, device: torch.device = torch.devic
     min_val, max_val = min(min_val, test_x.min()), max(max_val, test_x.max())
                                                     
     # normalize for all datasets (such that min value is 0 and max value is 1)
-    train_x = (train_x - min_val) / (max_val - min_val)
-    eval_x = (eval_x - min_val) / (max_val - min_val)
-    test_x = (test_x - min_val) / (max_val - min_val)
+    # train_x = (train_x - min_val) / (max_val - min_val)
+    # eval_x = (eval_x - min_val) / (max_val - min_val)
+    # test_x = (test_x - min_val) / (max_val - min_val)
 
     if subset is not None:
         train_x = train_x[:subset]
         eval_x = eval_x[:subset]
         test_x = test_x[:subset]
 
-    return train_x, eval_x, test_x, min_val, max_val, unique_chars
+    return train_x, eval_x, test_x, unique_chars
 
 
 class RandomSliceDataset(torch.utils.data.Dataset):
@@ -146,7 +146,7 @@ class RandomSliceDataset(torch.utils.data.Dataset):
 
 
 def get_dataloaders(batch_size: int, sequence_lengths: int, subset: int = None, stride: int = None, device: torch.device = torch.device("cpu"), use_cache: bool = True):
-    train, eval, test, min_val, max_val, unique_chars = get_tensor_enwik_data(subset=subset, device=device, use_cache=use_cache)
+    train, eval, test, unique_chars = get_tensor_enwik_data(subset=subset, device=device, use_cache=use_cache)
 
     train_data = RandomSliceDataset(train, sequence_lengths, randomized=True, stride=stride)
     eval_data = RandomSliceDataset(eval, sequence_lengths, randomized=False, stride=stride)
@@ -156,7 +156,7 @@ def get_dataloaders(batch_size: int, sequence_lengths: int, subset: int = None, 
     eval_loader = torch.utils.data.DataLoader(eval_data, batch_size=batch_size, shuffle=False)
     test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
-    return train_loader, eval_loader, test_loader, min_val, max_val, unique_chars
+    return train_loader, eval_loader, test_loader, unique_chars
 
 
 
@@ -171,7 +171,7 @@ class Task:
         self.sequence_lengths = sequence_lengths
 
 
-        self.train_loader, self.eval_loader, self.test_loader, self.min_val, self.max_val, self.unique_chars = get_dataloaders(
+        self.train_loader, self.eval_loader, self.test_loader, self.unique_chars = get_dataloaders(
             batch_size=batch_size,
             sequence_lengths=sequence_lengths,
             **dataset_kwargs,
