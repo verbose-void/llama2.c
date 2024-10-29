@@ -139,6 +139,9 @@ class RandomSliceDataset(torch.utils.data.Dataset):
             start_idx = random.randint(0, max_start)
             # Adjust start_idx to the nearest valid strided index
             start_idx = (start_idx // self.stride) * self.stride
+
+        # wrap start_idx back around to beginning using mod
+        start_idx = start_idx % len(self)
         
         ctx_end_i = start_idx + self.context_len
 
