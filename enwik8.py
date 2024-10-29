@@ -110,8 +110,10 @@ def get_tensor_enwik_data(subset: int = None, device: torch.device = torch.devic
 
 
 class RandomSliceDataset(torch.utils.data.Dataset):
-    def __init__(self, data: torch.Tensor, context_len: int, target_len: int = 1, randomized: bool = False, stride: int = None):
+    def __init__(self, data: torch.Tensor, context_len: int, randomized: bool = False, stride: int = None):
         assert len(data.shape) == 1
+        
+        target_len = context_len + 1
         assert len(data) > context_len + target_len
         assert target_len > 0
 
@@ -126,7 +128,7 @@ class RandomSliceDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.valid_start_indices
-
+    
     def __getitem__(self, idx):
         if not self.randomized:
             start_idx = idx * self.stride
@@ -137,24 +139,24 @@ class RandomSliceDataset(torch.utils.data.Dataset):
             start_idx = (start_idx // self.stride) * self.stride
         
         ctx_end_i = start_idx + self.context_len
-        tgt_end_i = ctx_end_i + self.target_len
-        
+        # tgt_end_i = ctx_end_i + self.target_len
+
         context = self.data[start_idx:ctx_end_i]
-        target = self.data[ctx_end_i:tgt_end_i]
+        target = self.data[start_idx + 1:ctx_end_i + 1]  # Right-shift target by one position
         
-        assert len(context) == self.context_len
-        assert len(target) == self.target_len
-        
+        assert len(context) == self.context_len, f"{len(context)} != {self.context_len}"
+        assert len(target) == self.target_len, f"{len(target)} != {self.target_len}"
         return context, target.squeeze()
 
 
 
-def get_dataloaders(batch_size: int, sequence_lengths: int, subset: int = None, stride: int = None, target_len: int=1, device: torch.device = torch.device("cpu"), use_cache: bool = True):
+
+def get_dataloaders(batch_size: int, sequence_lengths: int, subset: int = None, stride: int = None, device: torch.device = torch.device("cpu"), use_cache: bool = True):
     train, eval, test, min_val, max_val, unique_chars = get_tensor_enwik_data(subset=subset, device=device, use_cache=use_cache)
 
-    train_data = RandomSliceDataset(train, sequence_lengths, randomized=True, stride=stride, target_len=target_len)
-    eval_data = RandomSliceDataset(eval, sequence_lengths, randomized=False, stride=stride, target_len=target_len)
-    test_data = RandomSliceDataset(test, sequence_lengths, randomized=False, stride=stride, target_len=target_len)
+    train_data = RandomSliceDataset(train, sequence_lengths, randomized=True, stride=stride)
+    eval_data = RandomSliceDataset(eval, sequence_lengths, randomized=False, stride=stride)
+    test_data = RandomSliceDataset(test, sequence_lengths, randomized=False, stride=stride)
 
     train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=False)
     eval_loader = torch.utils.data.DataLoader(eval_data, batch_size=batch_size, shuffle=False)
