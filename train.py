@@ -28,7 +28,8 @@ from model import Transformer, ModelArgs
 from torch.distributed import destroy_process_group, init_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from tinystories import Task
+# from tinystories import Task
+from enwik8 import Task
 from export import model_export
 
 # -----------------------------------------------------------------------------
@@ -47,8 +48,9 @@ wandb_run_name = "run" + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 # data
 batch_size = 128  # if gradient_accumulation_steps > 1, this is the micro-batch size
 max_seq_len = 256
-vocab_source = "llama2" # llama2|custom; use Lllama 2 vocab from Meta, or custom trained
-vocab_size = 32000 # the Llama 2 tokenizer has 32K tokens
+vocab_source = "custom" # llama2|custom; use Lllama 2 vocab from Meta, or custom trained
+# vocab_size = 32000 # the Llama 2 tokenizer has 32K tokens
+vocab_size = 6063
 # model
 dim = 288
 n_layers = 6
@@ -129,15 +131,22 @@ ctx = (
 )
 
 # task-specific setup
-iter_batches = partial(
-    Task.iter_batches,
+# iter_batches = partial(
+#     Task.iter_batches,
+#     batch_size=batch_size,
+#     max_seq_len=max_seq_len,
+#     vocab_size=vocab_size,
+#     vocab_source=vocab_source,
+#     device=device,
+#     num_workers=0,
+# )
+task = Task(
     batch_size=batch_size,
-    max_seq_len=max_seq_len,
-    vocab_size=vocab_size,
-    vocab_source=vocab_source,
     device=device,
-    num_workers=0,
+    sequence_lengths=max_seq_len,
+    vocab_size=vocab_size,
 )
+iter_batches = task.iter_batches
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
@@ -218,8 +227,10 @@ def estimate_loss():
         for k in range(eval_iters):
             X, Y = next(batch_iter)
             with ctx:
-                logits = model(X, Y)
+                print(X.shape, Y.shape)
+                logits = model(X.int(), Y.int())
                 loss = raw_model.last_loss
+                exit()
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
