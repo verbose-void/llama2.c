@@ -42,7 +42,7 @@ eval_only = False  # if True, script exits right after the first eval
 always_save_checkpoint = False  # if True, always save a checkpoint after each eval
 init_from = "scratch"  # 'scratch' or 'resume'
 # wandb logging
-wandb_log = False  # disabled by default
+wandb_log = True  # disabled by default
 wandb_project = "llamac"
 wandb_run_name = "run" + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 # data
@@ -219,18 +219,25 @@ if ddp:
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
-    out = {}
+    out = {
+        "losses": {},
+        "bpcs": {},
+    }
     model.eval()
     for split in ["train", "val"]:
         batch_iter = iter_batches(split=split)
         losses = torch.zeros(eval_iters)  # keep on CPU
+        bpcs = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = next(batch_iter)
             with ctx:
                 logits = model(X, Y.squeeze())
                 loss = raw_model.last_loss
+                bpc = model.last_bpc
             losses[k] = loss.item()
-        out[split] = losses.mean()
+            bpcs[k] = bpc
+        out["losses"][split] = losses.mean()
+        out["bpcs"][split] = bpcs.mean()
     model.train()
     return out
 
@@ -260,7 +267,7 @@ t0 = time.time()
 local_iter_num = 0  # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model  # unwrap DDP container if needed
 running_mfu = -1.0
-bpcs = []
+running_train_bpcs = []
 while True:
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -269,20 +276,23 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses = estimate_loss()
+        metrics = estimate_loss()
+        losses = metrics["losses"]
+        bpcs = metrics["bpcs"]
+        running_train_bpcs.append(bpcs["train"].item())
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             try:
-                avg_bpc = sum(bpcs) / len(bpcs)
                 wandb.log(
                     {
                         "iter": iter_num,
                         "tokens": iter_num * tokens_per_iter,
                         "loss/train": losses["train"],
                         "loss/val": losses["val"],
+                        "bpc/train": bpcs["train"],
+                        "bpc/val": bpcs["val"],
                         "lr": lr,
                         "mfu": running_mfu * 100,  # convert to percentage
-                        "avg_bpc": avg_bpc,
                     }, step = iter_num
                 )
             except Exception as e:
@@ -317,7 +327,6 @@ while True:
             logits = model(X, Y)
             loss = raw_model.last_loss
             loss = loss / gradient_accumulation_steps
-            bpcs.append(model.last_bpc)
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = next(train_batch_iter)
         # backward pass, with gradient scaling if training in fp16
@@ -343,10 +352,10 @@ while True:
             mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
             running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
 
-        avg_bpc = sum(bpcs) / len(bpcs)
-
+        # bpc = bpcs
+        bpc = running_train_bpcs[-1]
         print(
-            f"{iter_num} | loss {lossf:.4f} | lr {lr:e} | {dt*1000:.2f}ms | mfu {running_mfu*100:.2f}% | bpc {avg_bpc:.4f}"
+            f"{iter_num} | loss {lossf:.4f} | lr {lr:e} | {dt*1000:.2f}ms | mfu {running_mfu*100:.2f}% | last train bpc {bpc:.4f}"
         )
     iter_num += 1
     local_iter_num += 1
