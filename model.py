@@ -251,7 +251,6 @@ class Transformer(nn.Module):
         """Calculate the bits per character (BPC) given logits and targets."""
         # calculate the negative log likelihood of the targets given the logits
         nll = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1, reduction='mean')
-        # calculate the number of bits per character
         bpc = nll / math.log(2)  # NOTE: bpc must be log base 2
         return bpc
 
@@ -357,3 +356,7 @@ class Transformer(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
 
         return idx
+    
+    @property
+    def num_params(self):
+        return sum(p.numel() for p in self.parameters())

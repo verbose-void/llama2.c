@@ -193,6 +193,8 @@ elif init_from == "resume":
     best_val_loss = checkpoint["best_val_loss"]
 model.to(device)
 
+config["num_params"] = model.num_params
+
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
 
