@@ -32,6 +32,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from enwik8 import Task
 from export import model_export
 
+from rigl_torch.RigL import RigLScheduler
+
 # -----------------------------------------------------------------------------
 # I/O
 out_dir = "out"
@@ -42,7 +44,7 @@ eval_only = False  # if True, script exits right after the first eval
 always_save_checkpoint = False  # if True, always save a checkpoint after each eval
 init_from = "scratch"  # 'scratch' or 'resume'
 # wandb logging
-wandb_log = True  # disabled by default
+wandb_log = False  # disabled by default
 wandb_project = "llamac"
 wandb_run_name = "run" + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 # data
@@ -262,6 +264,9 @@ if wandb_log and master_process:
     import wandb
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
+T_end = int(0.75 * max_iters)
+pruner = RigLScheduler(model=model, optimizer=optimizer, T_end=T_end, dense_allocation=0.1)
+
 # training loop
 train_batch_iter = iter_batches(split="train")
 X, Y = next(train_batch_iter)  # fetch the very first batch
@@ -338,10 +343,12 @@ while True:
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
     # step the optimizer and scaler if training in fp16
-    scaler.step(optimizer)
-    scaler.update()
-    # flush the gradients as soon as we can, no need for this memory anymore
-    optimizer.zero_grad(set_to_none=True)
+    if pruner():
+        scaler.step(optimizer)
+        scaler.update()
+        
+        # flush the gradients as soon as we can, no need for this memory anymore
+        optimizer.zero_grad(set_to_none=True)
 
     # timing and logging
     t1 = time.time()

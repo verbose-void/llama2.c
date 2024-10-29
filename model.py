@@ -253,6 +253,10 @@ class Transformer(nn.Module):
         nll = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1, reduction='mean')
         bpc = nll / math.log(2)  # NOTE: bpc must be log base 2
         return bpc
+    
+    # typical cross entropy loss
+    def calculate_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
     def forward(self, tokens: torch.Tensor, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         _bsz, seqlen = tokens.shape
@@ -273,7 +277,7 @@ class Transformer(nn.Module):
         if targets is not None:
             # if we are given some desired targets also calculate the loss
             logits = self.output(h)
-            self.last_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            self.last_loss = self.calculate_loss(logits, targets)
         else:
             # inference-time mini-optimization: only forward the output on the very last position
             logits = self.output(h[:, [-1], :]) # note: using list [-1] to preserve the time dim
