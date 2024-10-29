@@ -84,6 +84,14 @@ def get_tensor_enwik_data(subset: int = None, device: torch.device = torch.devic
         eval_x = torch.tensor(eval_chars, dtype=torch.float32, device=device)
         test_x = torch.tensor(test_chars, dtype=torch.float32, device=device)
 
+        # replace the values with their unique value indices
+        unique_chars = torch.unique(torch.cat([train_x, eval_x, test_x]))
+        # use searchsorted
+        train_x = torch.searchsorted(unique_chars, train_x)
+        eval_x = torch.searchsorted(unique_chars, eval_x)
+        test_x = torch.searchsorted(unique_chars, test_x)
+
+
         torch.save((train_x, eval_x, test_x), CACHE_PATH)
         print("Cache saved.")
 
@@ -95,7 +103,6 @@ def get_tensor_enwik_data(subset: int = None, device: torch.device = torch.devic
     min_val, max_val = train_x.min(), train_x.max()
     min_val, max_val = min(min_val, eval_x.min()), max(max_val, eval_x.max())
     min_val, max_val = min(min_val, test_x.min()), max(max_val, test_x.max())
-                                                    
     # normalize for all datasets (such that min value is 0 and max value is 1)
     # train_x = (train_x - min_val) / (max_val - min_val)
     # eval_x = (eval_x - min_val) / (max_val - min_val)
@@ -135,15 +142,12 @@ class RandomSliceDataset(torch.utils.data.Dataset):
         
         ctx_end_i = start_idx + self.context_len
 
-        context = self.data[start_idx:ctx_end_i]
-        target = self.data[start_idx + 1:ctx_end_i + 1]  # Right-shift target by one position
+        context = self.data[start_idx:ctx_end_i].long()
+        target = self.data[start_idx + 1:ctx_end_i + 1].long()  # Right-shift target by one position
         
         assert len(context) == self.context_len, f"{len(context)} != {self.context_len}"
         assert len(target) == self.context_len, f"{len(target)} != {self.context_len}"
         return context, target.squeeze()
-
-
-
 
 def get_dataloaders(batch_size: int, sequence_lengths: int, subset: int = None, stride: int = None, device: torch.device = torch.device("cpu"), use_cache: bool = True):
     train, eval, test, unique_chars = get_tensor_enwik_data(subset=subset, device=device, use_cache=use_cache)
@@ -185,7 +189,7 @@ class Task:
         # get dl based on split
         if split == "train":
             dl = self.train_loader
-        elif split == "eval":
+        elif split == "val":
             dl = self.eval_loader
         elif split == "test":
             dl = self.test_loader

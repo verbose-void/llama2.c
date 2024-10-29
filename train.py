@@ -227,10 +227,8 @@ def estimate_loss():
         for k in range(eval_iters):
             X, Y = next(batch_iter)
             with ctx:
-                print(X.shape, Y.shape)
-                logits = model(X.int(), Y.int())
+                logits = model(X, Y.squeeze())
                 loss = raw_model.last_loss
-                exit()
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
