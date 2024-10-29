@@ -257,7 +257,12 @@ class Transformer(nn.Module):
 
     def forward(self, tokens: torch.Tensor, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         _bsz, seqlen = tokens.shape
-        h = self.tok_embeddings(tokens)
+
+        # NOTE: with the modifications we've made to make this a character model (happened in the train script
+        # and data loading script, this token embedding code doesn't perform word embeddings, but instead
+        # performs character embeddings.
+        h = self.tok_embeddings(tokens)  # now, character embeddings
+
         h = self.dropout(h)
         freqs_cos = self.freqs_cos[:seqlen]
         freqs_sin = self.freqs_sin[:seqlen]
