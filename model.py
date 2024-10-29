@@ -91,6 +91,25 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
         .reshape(bs, slen, n_kv_heads * n_rep, head_dim)
     )
 
+
+class FeedForwardAttention(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.hidden_dim = args.dim * 4  # Typically, feed-forward layers use a larger hidden dimension.
+        self.fc1 = nn.Linear(args.dim, self.hidden_dim)
+        self.fc2 = nn.Linear(self.hidden_dim, args.dim)
+        self.dropout = nn.Dropout(args.dropout)
+        self.resid_dropout = nn.Dropout(args.dropout)
+
+    def forward(self, x: torch.Tensor):
+        # Simple feed-forward network in place of attention
+        x = self.fc1(x)  # Project up to the hidden dimension
+        x = F.relu(x)  # Apply non-linearity
+        x = self.dropout(x)  # Apply dropout after non-linearity
+        x = self.fc2(x)  # Project back down to original dimension
+        output = self.resid_dropout(x)  # Final dropout before adding to residual stream
+        return output
+
 class Attention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
@@ -186,7 +205,8 @@ class TransformerBlock(nn.Module):
         self.n_heads = args.n_heads
         self.dim = args.dim
         self.head_dim = args.dim // args.n_heads
-        self.attention = Attention(args)
+        # self.attention = Attention(args)
+        self.attention = FeedForwardAttention(args)
         self.feed_forward = FeedForward(
             dim=args.dim,
             hidden_dim=args.hidden_dim,
