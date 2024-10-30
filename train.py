@@ -57,7 +57,7 @@ n_layers = 6
 n_heads = 6
 n_kv_heads = 6
 multiple_of = 32
-dropout = 0.0
+dropout = 0.5
 # adamw optimizer
 gradient_accumulation_steps = 4  # used to simulate larger batch sizes
 learning_rate = 5e-4  # max learning rate
