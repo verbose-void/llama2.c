@@ -38,6 +38,14 @@ class SparseLinear(nn.Module):
         # Initial mask
         self.mask = nn.Parameter(self._create_initial_mask(), requires_grad=False)
 
+        # Variable to store previous gradients
+        self.previous_grads = None
+        self.weight.register_hook(self._save_grad)
+
+    def _save_grad(self, grad):
+        """Hook function to save the gradient of the weight parameter."""
+        self.previous_grads = grad
+
     @property
     def num_params(self):
         return self.in_features * self.out_features
@@ -59,18 +67,16 @@ class SparseLinear(nn.Module):
         mask[torch.randperm(num_params)[:num_sparse]] = 0
         return mask.view(self.out_features, self.in_features).bool()
 
-    def _rigl_step(self, grad_output):
+    def _rigl_step(self):
         """Applies the RigL sparse-to-sparse training strategy without decay or scheduling."""
+        
         device = self.weight.device
         # target_sparsity = self.sparse_fraction  # Fixed sparsity level
         target_num_dense = self.target_num_dense
 
-        # Ensure self.mask is on the correct device
-        self.mask = self.mask.to(device)
-
         # Calculate scores for dropping and growing
-        weight_magnitudes = torch.abs(self.weight).to(device)
-        grad_magnitudes = torch.abs(grad_output).to(device)
+        weight_magnitudes = torch.abs(self.weight.data).to(device)
+        grad_magnitudes = torch.abs(self.previous_grads).to(device)
 
         
         exit()
@@ -106,16 +112,12 @@ class SparseLinear(nn.Module):
 
 
     def forward(self, input):
+        if self.training:
+            self._rigl_step()
+
         # Apply mask to weights in forward pass
         masked_weight = self.weight * self.mask
         return nn.functional.linear(input, masked_weight)
-
-    def backward(self, grad_output):
-        # Mask the gradients in the backward pass
-        self._rigl_step(grad_output)
-        masked_grad = grad_output * self.mask
-        return masked_grad
-    
 
 
 def plot_sparse_linear_masks(model, max_plots: int = 16):
@@ -169,13 +171,37 @@ def plot_sparse_linear_masks(model, max_plots: int = 16):
 
 
 if __name__ == "__main__":
-    # Example usage
+    # Initialize a model with multiple SparseLinear layers
     model = nn.Sequential(
-        SparseLinear(784, 256),
+        SparseLinear(10, 8),
         nn.ReLU(),
-        SparseLinear(256, 128),
+        SparseLinear(8, 4),
         nn.ReLU(),
-        SparseLinear(128, 10)
+        SparseLinear(4, 2)
     )
+    
+    # Define a simple loss function and optimizer
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+    # Dummy input and target tensors
+    input_tensor = torch.randn(2, 10)  # Batch size of 2, 10 input features
+    target_tensor = torch.randn(2, 2)  # Batch size of 2, 2 output features
+
+    for _ in range(10):
+        # Forward pass
+        output = model(input_tensor)
+        
+        # Calculate loss
+        loss = criterion(output, target_tensor)
+        print("Initial loss:", loss.item())
+
+        # Backward pass
+        optimizer.zero_grad()
+        loss.backward()
+
+        # Perform optimization step
+        optimizer.step()
+
     fig = plot_sparse_linear_masks(model)
     plt.show()
