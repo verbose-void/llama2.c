@@ -109,10 +109,10 @@ class SparseLinear(nn.Module):
     
 
 
-def plot_sparse_linear_weights(model):
+def plot_sparse_linear_masks(model):
     """ 
-    Loops through a model to find all SparseLinear layers, applies the mask, 
-    and creates a grid plot displaying each masked weight matrix.
+    Loops through a model to find all SparseLinear layers, displays each layer's mask,
+    and creates a grid plot with sparsity information.
     
     Args:
         model (torch.nn.Module): The model containing SparseLinear layers.
@@ -134,24 +134,34 @@ def plot_sparse_linear_weights(model):
     fig, axes = plt.subplots(n, n, figsize=(12, 12))
     axes = axes.flatten()  # Flatten to easily iterate over axes
 
-    # Plot each SparseLinear layer's masked weight matrix
+    # Plot each SparseLinear layer's mask matrix
     for i, layer in enumerate(sparse_layers):
-        masked_weights = layer.weight * layer.mask  # Apply the mask to the weights
         ax = axes[i]
         
-        # Display the masked weights matrix
-        im = ax.imshow(masked_weights.detach().cpu().numpy(), cmap='viridis', aspect='auto')
-        fig.colorbar(im, ax=ax)
+        # Display the mask matrix
+        mask_matrix = layer.mask.detach().cpu().numpy()
+        ax.imshow(mask_matrix, cmap='gray', aspect='auto')
         
-        # Set title and hide axis ticks
-        ax.set_title(f"SparseLinear Layer {i+1}")
-        ax.axis("off")
+        # Calculate sparsity information
+        total_elements = mask_matrix.size
+        num_zeros = total_elements - mask_matrix.sum()
+        sparsity = (num_zeros / total_elements) * 100
+        
+        # Set titles and axis labels
+        ax.set_title(f"SL {i+1} - Sparsity: {sparsity:.2f}% ({num_zeros} zero-cells)")
+        ax.set_xlabel(f"Input Features ({layer.in_features})")
+        ax.set_ylabel(f"Output Features ({layer.out_features})")
+        
+        # Hide axis ticks
+        ax.set_xticks([])
+        ax.set_yticks([])
     
     # Hide any unused subplots if num_layers is not a perfect square
     for j in range(i + 1, n * n):
         axes[j].axis("off")
 
     fig.tight_layout()
+
     return fig
 
 
@@ -164,5 +174,5 @@ if __name__ == "__main__":
         nn.ReLU(),
         SparseLinear(128, 10)
     )
-    fig = plot_sparse_linear_weights(model)
+    fig = plot_sparse_linear_masks(model)
     plt.show()
