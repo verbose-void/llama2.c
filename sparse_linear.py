@@ -9,7 +9,7 @@ import math
 
 
 class SparseLinear(nn.Module):
-    def __init__(self, in_features, out_features, sparse_fraction=0.5, alpha=0.1, bias: bool = False):
+    def __init__(self, in_features, out_features, sparse_fraction=0.9, alpha=0.1, bias: bool = False):
         """A sparse version of the standard Linear layer. Implements RigL's sparse-to-sparse strategy.
 
         Args:
