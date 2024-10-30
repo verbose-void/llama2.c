@@ -57,9 +57,9 @@ class SparseLinear(nn.Module):
         # Ensure self.mask is on the correct device
         self.mask = self.mask.to(device)
 
-        # Calculate drop and grow scores
-        weight_magnitudes = torch.abs(self.weight)
-        grad_magnitudes = torch.abs(self.dense_grad)
+        # Calculate scores for dropping and growing
+        weight_magnitudes = torch.abs(self.weight).to(device)
+        grad_magnitudes = torch.abs(self.dense_grad).to(device)
 
         # Determine total connections and the target number of non-zero connections
         total_params = self.weight.numel()
@@ -77,13 +77,17 @@ class SparseLinear(nn.Module):
             new_mask[drop_indices] = 0
 
             # Grow Criterion: Grow connections with the largest gradient magnitudes
-            grow_scores = torch.where(new_mask == 1, torch.full_like(grad_magnitudes.view(-1), float('-inf')), grad_magnitudes.view(-1))
+            grow_scores = torch.where(
+                new_mask == 1, 
+                torch.full_like(grad_magnitudes.view(-1), float('-inf'), device=device),  # Ensure device consistency
+                grad_magnitudes.view(-1)
+            )
             _, grow_indices = torch.topk(grow_scores, k=num_grow)
             new_mask[grow_indices] = 1
 
             # Reshape the mask and apply it to the layer
             self.mask = new_mask.view(self.out_features, self.in_features).to(device)
-        
+
         assert self.mask.sum().item() == num_nonzero_target, f"Mask does not have the correct number of non-zero elements ({self.mask.sum().item()} vs {num_nonzero_target})"
 
         # Reset dense_grad after each update to avoid accumulation
