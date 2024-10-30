@@ -36,34 +36,48 @@ class SparseLinear(nn.Module):
         nn.init.kaiming_uniform_(self.weight, a=np.sqrt(5))
 
         # Initial mask
-        self.mask = self._create_initial_mask()
-        
-        # Gradient storage for RigL updates
-        self.dense_grad = torch.zeros_like(self.weight)
+        self.mask = nn.Parameter(self._create_initial_mask(), requires_grad=False)
+
+    @property
+    def num_params(self):
+        return self.in_features * self.out_features
+
+    @property
+    def target_num_sparse(self):
+        num_params = self.in_features * self.out_features
+        return int(num_params * self.sparse_fraction)
+    
+    @property
+    def target_num_dense(self):
+        return self.num_params - self.target_num_sparse
 
     def _create_initial_mask(self):
         """Initialize the mask based on the sparse_fraction."""
-        num_params = self.in_features * self.out_features
-        num_sparse = int(num_params * self.sparse_fraction)
+        num_params = self.num_params
+        num_sparse = self.target_num_sparse
         mask = torch.ones(num_params, device=self.weight.device)
         mask[torch.randperm(num_params)[:num_sparse]] = 0
         return mask.view(self.out_features, self.in_features).bool()
 
-    def _rigl_step(self):
+    def _rigl_step(self, grad_output):
         """Applies the RigL sparse-to-sparse training strategy without decay or scheduling."""
         device = self.weight.device
-        target_sparsity = self.sparse_fraction  # Fixed sparsity level
+        # target_sparsity = self.sparse_fraction  # Fixed sparsity level
+        target_num_dense = self.target_num_dense
 
         # Ensure self.mask is on the correct device
         self.mask = self.mask.to(device)
 
         # Calculate scores for dropping and growing
         weight_magnitudes = torch.abs(self.weight).to(device)
-        grad_magnitudes = torch.abs(self.dense_grad).to(device)
+        grad_magnitudes = torch.abs(grad_output).to(device)
+
+        
+        exit()
 
         # Determine total connections and the target number of non-zero connections
-        total_params = self.weight.numel()
-        num_nonzero_target = int(total_params * (1 - target_sparsity))
+        # total_params = self.weight.numel()
+        # num_nonzero_target = int(total_params * (1 - target_sparsity))
 
         # Calculate number of elements to drop and grow to maintain exact sparsity
         num_current_nonzero = self.mask.sum().item()
@@ -88,22 +102,17 @@ class SparseLinear(nn.Module):
             # Reshape the mask and apply it to the layer
             self.mask = new_mask.view(self.out_features, self.in_features).to(device)
 
-        assert self.mask.sum().item() == num_nonzero_target, f"Mask does not have the correct number of non-zero elements ({self.mask.sum().item()} vs {num_nonzero_target})"
-
-        # Reset dense_grad after each update to avoid accumulation
-        self.dense_grad.zero_()
+        assert self.mask.sum().item() == num_nonzero_target, f"Mask does not have the correct number of non-zero elements ({self.mask.sum().item()} vs {num_nonzero_target}), num_drop: {num_drop}, num_grow: {num_grow}"
 
 
     def forward(self, input):
-        # Apply RigL step to update the mask every forward pass
-        self._rigl_step()
-
         # Apply mask to weights in forward pass
         masked_weight = self.weight * self.mask
         return nn.functional.linear(input, masked_weight)
 
     def backward(self, grad_output):
         # Mask the gradients in the backward pass
+        self._rigl_step(grad_output)
         masked_grad = grad_output * self.mask
         return masked_grad
     
