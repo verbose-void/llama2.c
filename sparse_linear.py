@@ -81,17 +81,16 @@ class SparseLinear(nn.Module):
         weight_magnitudes = torch.abs(self.weight).to(device)
         grad_magnitudes = torch.abs(self.previous_grads).to(device)
 
-        print(grad_magnitudes.mean())
-        
-        exit()
-
         # Determine total connections and the target number of non-zero connections
         # total_params = self.weight.numel()
         # num_nonzero_target = int(total_params * (1 - target_sparsity))
 
         # Calculate number of elements to drop and grow to maintain exact sparsity
-        num_current_nonzero = self.mask.sum().item()
-        num_drop = max(num_current_nonzero - num_nonzero_target, 0)
+        # num_current_nonzero = self.mask.sum().item()
+        # num_drop = max(num_current_nonzero - num_nonzero_target, 0)
+
+        # num drop is alpha * target_num_dense
+        num_drop = int(self.alpha * target_num_dense)
         num_grow = num_drop
 
         # Drop Criterion: Drop the connections with the smallest weight magnitudes
@@ -110,9 +109,9 @@ class SparseLinear(nn.Module):
             new_mask[grow_indices] = 1
 
             # Reshape the mask and apply it to the layer
-            self.mask = new_mask.view(self.out_features, self.in_features).to(device)
+            self.mask.data = new_mask.view(self.out_features, self.in_features)
 
-        assert self.mask.sum().item() == num_nonzero_target, f"Mask does not have the correct number of non-zero elements ({self.mask.sum().item()} vs {num_nonzero_target}), num_drop: {num_drop}, num_grow: {num_grow}"
+        assert self.mask.sum().item() == target_num_dense, f"Mask does not have the correct number of non-zero elements ({self.mask.sum().item()} vs {target_num_dense}), num_drop: {num_drop}, num_grow: {num_grow}"
 
 
     def forward(self, input):
