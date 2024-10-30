@@ -9,7 +9,7 @@ import math
 
 
 class SparseLinear(nn.Module):
-    def __init__(self, in_features, out_features, sparse_fraction=0.9, alpha=0.3, bias: bool = False):
+    def __init__(self, in_features, out_features, sparse_fraction=0.9, alpha=0.1, bias: bool = False):
         """A sparse version of the standard Linear layer. Implements RigL's sparse-to-sparse strategy.
 
         Args:
@@ -90,21 +90,24 @@ class SparseLinear(nn.Module):
         # num_current_nonzero = self.mask.sum().item()
         # num_drop = max(num_current_nonzero - num_nonzero_target, 0)
 
-        # num drop is alpha * target_num_dense
         num_drop = int(self.alpha * target_num_dense)
 
-        # Drop Criterion: Drop the connections with the smallest weight magnitudes
+        # Drop Criterion: Drop the connections with the smallest weight magnitudes, excluding originally zero elements
         if num_drop > 0:
-            _, drop_indices = torch.topk(-weight_magnitudes.view(-1), k=num_drop)
+            # Mask out positions where the mask is already zero
+            masked_weights = torch.where(self.mask.view(-1) == 1, weight_magnitudes.view(-1), float('inf') * torch.ones_like(weight_magnitudes.view(-1)))
+            
+            # Select the smallest non-zero weight magnitudes for dropping
+            _, drop_indices = torch.topk(-masked_weights, k=num_drop)
             new_mask = self.mask.view(-1).clone()
             new_mask[drop_indices] = 0
 
-            # sometimes we can drop items that were already zero, so let's grow the remaining
+            # Adjust the number of connections to grow based on actual drops made
             num_grow = (new_mask == 0).sum() - target_num_sparse
 
             # Grow Criterion: Grow connections with the largest gradient magnitudes
             grow_scores = torch.where(
-                new_mask == 1, 
+                new_mask == 1,
                 torch.full_like(grad_magnitudes.view(-1), float('-inf'), device=device),  # Ensure device consistency
                 grad_magnitudes.view(-1)
             )
@@ -115,7 +118,6 @@ class SparseLinear(nn.Module):
             self.mask.data = new_mask.view(self.out_features, self.in_features)
 
         assert self.mask.sum().item() == target_num_dense, f"Mask does not have the correct number of non-zero elements ({self.mask.sum().item()} vs {target_num_dense}), num_drop: {num_drop}, num_grow: {num_grow}"
-
 
     def forward(self, input):
         if self.training:
@@ -159,9 +161,9 @@ def plot_sparse_linear_masks(model, max_plots: int = 16):
         sparsity = (num_zeros / total_elements) * 100
         
         # Set titles and axis labels
-        ax.set_title(f"SL {i+1} - Sparsity: {sparsity:.2f}% ({num_zeros} zero-cells)")
-        ax.set_xlabel(f"Input Features ({layer.in_features})")
-        ax.set_ylabel(f"Output Features ({layer.out_features})")
+        ax.set_title(f"Sparsity: {sparsity:.2f}%")
+        ax.set_xlabel(f"In Features: {layer.in_features}")
+        ax.set_ylabel(f"Out Features: {layer.out_features}")
         
         # Hide axis ticks
         ax.set_xticks([])
