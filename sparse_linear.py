@@ -3,6 +3,11 @@ import torch.nn as nn
 import numpy as np
 import torch.distributed as dist
 
+import torch
+import matplotlib.pyplot as plt
+import math
+
+
 class SparseLinear(nn.Module):
     def __init__(self, in_features, out_features, sparse_fraction=0.9, alpha=0.3, bias: bool = False):
         """A sparse version of the standard Linear layer. Implements RigL's sparse-to-sparse strategy.
@@ -101,3 +106,63 @@ class SparseLinear(nn.Module):
         # Mask the gradients in the backward pass
         masked_grad = grad_output * self.mask
         return masked_grad
+    
+
+
+def plot_sparse_linear_weights(model):
+    """ 
+    Loops through a model to find all SparseLinear layers, applies the mask, 
+    and creates a grid plot displaying each masked weight matrix.
+    
+    Args:
+        model (torch.nn.Module): The model containing SparseLinear layers.
+    
+    Returns:
+        fig (matplotlib.figure.Figure): The matplotlib figure containing the grid of subplots.
+    """
+    # Recursively find all SparseLinear layers
+    sparse_layers = []
+    for module in model.modules():
+        if isinstance(module, SparseLinear):
+            sparse_layers.append(module)
+
+    # Calculate grid size
+    num_layers = len(sparse_layers)
+    n = math.ceil(math.sqrt(num_layers))
+    
+    # Create the figure and subplots
+    fig, axes = plt.subplots(n, n, figsize=(12, 12))
+    axes = axes.flatten()  # Flatten to easily iterate over axes
+
+    # Plot each SparseLinear layer's masked weight matrix
+    for i, layer in enumerate(sparse_layers):
+        masked_weights = layer.weight * layer.mask  # Apply the mask to the weights
+        ax = axes[i]
+        
+        # Display the masked weights matrix
+        im = ax.imshow(masked_weights.detach().cpu().numpy(), cmap='viridis', aspect='auto')
+        fig.colorbar(im, ax=ax)
+        
+        # Set title and hide axis ticks
+        ax.set_title(f"SparseLinear Layer {i+1}")
+        ax.axis("off")
+    
+    # Hide any unused subplots if num_layers is not a perfect square
+    for j in range(i + 1, n * n):
+        axes[j].axis("off")
+
+    fig.tight_layout()
+    return fig
+
+
+if __name__ == "__main__":
+    # Example usage
+    model = nn.Sequential(
+        SparseLinear(784, 256),
+        nn.ReLU(),
+        SparseLinear(256, 128),
+        nn.ReLU(),
+        SparseLinear(128, 10)
+    )
+    fig = plot_sparse_linear_weights(model)
+    plt.show()

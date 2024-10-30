@@ -32,7 +32,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from enwik8 import Task
 from export import model_export
 
-from rigl_torch.RigL import RigLScheduler
+from sparse_linear import plot_sparse_linear_weights
 
 # -----------------------------------------------------------------------------
 # I/O
@@ -264,9 +264,6 @@ if wandb_log and master_process:
     import wandb
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
-T_end = int(0.75 * max_iters)
-pruner = RigLScheduler(model=model, optimizer=optimizer, T_end=T_end, dense_allocation=0.1)
-
 # training loop
 train_batch_iter = iter_batches(split="train")
 X, Y = next(train_batch_iter)  # fetch the very first batch
@@ -289,6 +286,8 @@ while True:
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             try:
+                sparsity_plot = plot_sparse_linear_weights(model)
+
                 wandb.log(
                     {
                         "iter": iter_num,
@@ -299,8 +298,13 @@ while True:
                         "bpc/val": bpcs["val"],
                         "lr": lr,
                         "mfu": running_mfu * 100,  # convert to percentage
+                        "sparsity": wandb.Image(sparsity_plot),
                     }, step = iter_num
                 )
+
+                # clear plt figure to avoid memory leak
+                plt.close(sparsity_plot)
+                
             except Exception as e:
                 print(f"logging to wandb failed: {e}")
         if losses["val"] < best_val_loss or always_save_checkpoint:
@@ -342,13 +346,13 @@ while True:
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+
     # step the optimizer and scaler if training in fp16
-    if pruner():
-        scaler.step(optimizer)
-        scaler.update()
-        
-        # flush the gradients as soon as we can, no need for this memory anymore
-        optimizer.zero_grad(set_to_none=True)
+    scaler.step(optimizer)
+    scaler.update()
+    
+    # flush the gradients as soon as we can, no need for this memory anymore
+    optimizer.zero_grad(set_to_none=True)
 
     # timing and logging
     t1 = time.time()
