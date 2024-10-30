@@ -36,11 +36,12 @@ class SparseLinear(nn.Module):
 
     def _rigl_step(self):
         """Updates the mask by applying RigL's sparse-to-sparse strategy."""
+        device = self.weight.device  # Ensure all tensors are on the same device
         drop_fraction = self.alpha / 2
 
         # Calculate drop/grow scores
-        score_drop = torch.abs(self.weight)
-        score_grow = torch.abs(self.dense_grad)
+        score_drop = torch.abs(self.weight).to(device)
+        score_grow = torch.abs(self.dense_grad).to(device)
 
         # Handle distributed environment
         if dist.is_initialized():
@@ -58,14 +59,14 @@ class SparseLinear(nn.Module):
 
         # Create drop mask
         _, drop_indices = torch.topk(score_drop.view(-1), k=total_params)
-        new_mask = torch.ones_like(score_drop.view(-1), dtype=torch.bool)
+        new_mask = torch.ones_like(score_drop.view(-1), dtype=torch.bool, device=device)
         new_mask[drop_indices[:num_drop]] = 0
 
         # Grow new connections based on grow scores
-        grow_score = torch.where(self.mask.view(-1), torch.full_like(score_grow.view(-1), float('-inf')), score_grow.view(-1))
+        grow_score = torch.where(self.mask.view(-1), torch.full_like(score_grow.view(-1), float('-inf'), device=device), score_grow.view(-1))
         _, grow_indices = torch.topk(grow_score, k=num_grow)
         new_mask[grow_indices] = 1
-        self.mask = new_mask.view(self.out_features, self.in_features)
+        self.mask = new_mask.view(self.out_features, self.in_features).to(device)
 
         # Reset dense_grad after each update
         self.dense_grad.zero_()
