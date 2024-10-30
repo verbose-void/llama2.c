@@ -50,47 +50,43 @@ class SparseLinear(nn.Module):
         return mask.view(self.out_features, self.in_features).bool()
 
     def _rigl_step(self):
-        """Updates the mask by applying RigL's sparse-to-sparse strategy."""
-        device = self.weight.device  # Ensure all tensors are on the same device
-        drop_fraction = self.alpha / 2
+        """Applies the RigL sparse-to-sparse training strategy without decay or scheduling."""
+        device = self.weight.device
+        target_sparsity = self.sparse_fraction  # Fixed sparsity level
 
-        # Ensure self.mask is on the same device as self.weight
+        # Ensure self.mask is on the correct device
         self.mask = self.mask.to(device)
 
-        # Calculate drop/grow scores
-        score_drop = torch.abs(self.weight).to(device)
-        score_grow = torch.abs(self.dense_grad).to(device)
+        # Calculate drop and grow scores
+        weight_magnitudes = torch.abs(self.weight)
+        grad_magnitudes = torch.abs(self.dense_grad)
 
-        # Handle distributed environment
-        if dist.is_initialized():
-            world_size = dist.get_world_size()
-            dist.all_reduce(score_drop)
-            dist.all_reduce(score_grow)
-            score_drop /= world_size
-            score_grow /= world_size
-
-        # Determine drop and grow counts
+        # Determine total connections and the target number of non-zero connections
         total_params = self.weight.numel()
-        num_nonzero = self.mask.sum().item()
-        num_drop = int(num_nonzero * drop_fraction)
+        num_nonzero_target = int(total_params * (1 - target_sparsity))
+
+        # Calculate number of elements to drop and grow to maintain exact sparsity
+        num_current_nonzero = self.mask.sum().item()
+        num_drop = max(num_current_nonzero - num_nonzero_target, 0)
         num_grow = num_drop
 
-        # Create drop mask
-        _, drop_indices = torch.topk(score_drop.view(-1), k=total_params)
-        new_mask = torch.ones_like(score_drop.view(-1), dtype=torch.bool, device=device)
-        new_mask[drop_indices[:num_drop]] = 0
+        # Drop Criterion: Drop the connections with the smallest weight magnitudes
+        if num_drop > 0:
+            _, drop_indices = torch.topk(-weight_magnitudes.view(-1), k=num_drop)
+            new_mask = self.mask.view(-1).clone()
+            new_mask[drop_indices] = 0
 
-        # Grow new connections based on grow scores
-        grow_score = torch.where(
-            self.mask.view(-1), 
-            torch.full_like(score_grow.view(-1), float('-inf'), device=device), 
-            score_grow.view(-1)
-        )
-        _, grow_indices = torch.topk(grow_score, k=num_grow)
-        new_mask[grow_indices] = 1
-        self.mask = new_mask.view(self.out_features, self.in_features).to(device)
+            # Grow Criterion: Grow connections with the largest gradient magnitudes
+            grow_scores = torch.where(new_mask == 1, torch.full_like(grad_magnitudes.view(-1), float('-inf')), grad_magnitudes.view(-1))
+            _, grow_indices = torch.topk(grow_scores, k=num_grow)
+            new_mask[grow_indices] = 1
 
-        # Reset dense_grad after each update
+            # Reshape the mask and apply it to the layer
+            self.mask = new_mask.view(self.out_features, self.in_features).to(device)
+        
+        assert self.mask.sum().item() == num_nonzero_target, f"Mask does not have the correct number of non-zero elements ({self.mask.sum().item()} vs {num_nonzero_target})"
+
+        # Reset dense_grad after each update to avoid accumulation
         self.dense_grad.zero_()
 
 
