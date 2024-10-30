@@ -39,6 +39,9 @@ class SparseLinear(nn.Module):
         device = self.weight.device  # Ensure all tensors are on the same device
         drop_fraction = self.alpha / 2
 
+        # Ensure self.mask is on the same device as self.weight
+        self.mask = self.mask.to(device)
+
         # Calculate drop/grow scores
         score_drop = torch.abs(self.weight).to(device)
         score_grow = torch.abs(self.dense_grad).to(device)
@@ -63,13 +66,18 @@ class SparseLinear(nn.Module):
         new_mask[drop_indices[:num_drop]] = 0
 
         # Grow new connections based on grow scores
-        grow_score = torch.where(self.mask.view(-1), torch.full_like(score_grow.view(-1), float('-inf'), device=device), score_grow.view(-1))
+        grow_score = torch.where(
+            self.mask.view(-1), 
+            torch.full_like(score_grow.view(-1), float('-inf'), device=device), 
+            score_grow.view(-1)
+        )
         _, grow_indices = torch.topk(grow_score, k=num_grow)
         new_mask[grow_indices] = 1
         self.mask = new_mask.view(self.out_features, self.in_features).to(device)
 
         # Reset dense_grad after each update
         self.dense_grad.zero_()
+
 
     def forward(self, input):
         # Apply RigL step to update the mask every forward pass
