@@ -32,12 +32,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from enwik8 import Task
 from export import model_export
 
-from sparse_linear import plot_sparse_linear_weights
+from sparse_linear import plot_sparse_linear_masks
+import matplotlib.pyplot as plt
 
 # -----------------------------------------------------------------------------
 # I/O
 out_dir = "out"
-eval_interval = 1000
+eval_interval = 300
 log_interval = 1
 eval_iters = 100
 eval_only = False  # if True, script exits right after the first eval
@@ -286,7 +287,7 @@ while True:
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             try:
-                sparsity_plot = plot_sparse_linear_weights(model)
+                sparsity_plot = plot_sparse_linear_masks(model)
 
                 wandb.log(
                     {
