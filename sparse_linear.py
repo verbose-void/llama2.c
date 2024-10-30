@@ -76,6 +76,7 @@ class SparseLinear(nn.Module):
         device = self.weight.device
         # target_sparsity = self.sparse_fraction  # Fixed sparsity level
         target_num_dense = self.target_num_dense
+        target_num_sparse = self.target_num_sparse
 
         # Calculate scores for dropping and growing
         weight_magnitudes = torch.abs(self.weight).to(device)
@@ -91,13 +92,15 @@ class SparseLinear(nn.Module):
 
         # num drop is alpha * target_num_dense
         num_drop = int(self.alpha * target_num_dense)
-        num_grow = num_drop
 
         # Drop Criterion: Drop the connections with the smallest weight magnitudes
         if num_drop > 0:
             _, drop_indices = torch.topk(-weight_magnitudes.view(-1), k=num_drop)
             new_mask = self.mask.view(-1).clone()
             new_mask[drop_indices] = 0
+
+            # sometimes we can drop items that were already zero, so let's grow the remaining
+            num_grow = (new_mask == 0).sum() - target_num_sparse
 
             # Grow Criterion: Grow connections with the largest gradient magnitudes
             grow_scores = torch.where(
@@ -176,9 +179,9 @@ def plot_sparse_linear_masks(model, max_plots: int = 16):
 if __name__ == "__main__":
     # Initialize a model with multiple SparseLinear layers
     model = nn.Sequential(
-        SparseLinear(10, 8),
+        SparseLinear(10, 1000),
         nn.ReLU(),
-        SparseLinear(8, 4),
+        SparseLinear(1000, 4),
         nn.ReLU(),
         SparseLinear(4, 2)
     )
