@@ -109,22 +109,16 @@ class SparseLinear(nn.Module):
     
 
 
-def plot_sparse_linear_masks(model):
-    """ 
-    Loops through a model to find all SparseLinear layers, displays each layer's mask,
-    and creates a grid plot with sparsity information.
-    
-    Args:
-        model (torch.nn.Module): The model containing SparseLinear layers.
-    
-    Returns:
-        fig (matplotlib.figure.Figure): The matplotlib figure containing the grid of subplots.
+def plot_sparse_linear_masks(model, max_plots: int = 16):
+    """Plots the mask matrix of each SparseLinear layer in the model.
     """
+
     # Recursively find all SparseLinear layers
     sparse_layers = []
     for module in model.modules():
         if isinstance(module, SparseLinear):
             sparse_layers.append(module)
+    sparse_layers = sparse_layers[:max_plots]  # Limit to max_plots
 
     # Calculate grid size
     num_layers = len(sparse_layers)
