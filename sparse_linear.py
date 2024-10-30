@@ -5,6 +5,16 @@ import torch.distributed as dist
 
 class SparseLinear(nn.Module):
     def __init__(self, in_features, out_features, sparse_fraction=0.9, alpha=0.3, bias: bool = False):
+        """A sparse version of the standard Linear layer. Implements RigL's sparse-to-sparse strategy.
+
+        Args:
+            in_features (int): Number of input features.
+            out_features (int): Number of output features.
+            sparse_fraction (float): Percentage of weights that will be masked out to zero.
+            alpha (float): Fraction of weights to drop/grow at each step.
+            bias (bool): Whether to include a bias term in the linear transformation.
+        """
+
         super(SparseLinear, self).__init__()
 
         if bias: 
