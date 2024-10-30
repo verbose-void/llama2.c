@@ -9,6 +9,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from sparse_linear import SparseLinear
+
+
+# LINEAR_CLASS = nn.Linear
+LINEAR_CLASS = SparseLinear
+
+
 @dataclass
 class ModelArgs:
     # default hyperparameters for the Llama 7B model
@@ -101,10 +108,10 @@ class Attention(nn.Module):
         self.n_local_kv_heads = self.n_kv_heads // model_parallel_size
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
         self.head_dim = args.dim // args.n_heads
-        self.wq = nn.Linear(args.dim, args.n_heads * self.head_dim, bias=False)
-        self.wk = nn.Linear(args.dim, self.n_kv_heads * self.head_dim, bias=False)
-        self.wv = nn.Linear(args.dim, self.n_kv_heads * self.head_dim, bias=False)
-        self.wo = nn.Linear(args.n_heads * self.head_dim, args.dim, bias=False)
+        self.wq = LINEAR_CLASS(args.dim, args.n_heads * self.head_dim, bias=False)
+        self.wk = LINEAR_CLASS(args.dim, self.n_kv_heads * self.head_dim, bias=False)
+        self.wv = LINEAR_CLASS(args.dim, self.n_kv_heads * self.head_dim, bias=False)
+        self.wo = LINEAR_CLASS(args.n_heads * self.head_dim, args.dim, bias=False)
         self.attn_dropout = nn.Dropout(args.dropout)
         self.resid_dropout = nn.Dropout(args.dropout)
         self.dropout = args.dropout
@@ -171,9 +178,9 @@ class FeedForward(nn.Module):
             hidden_dim = 4 * dim
             hidden_dim = int(2 * hidden_dim / 3)
             hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
-        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
-        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
-        self.w3 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w1 = LINEAR_CLASS(dim, hidden_dim, bias=False)
+        self.w2 = LINEAR_CLASS(hidden_dim, dim, bias=False)
+        self.w3 = LINEAR_CLASS(dim, hidden_dim, bias=False)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -218,7 +225,7 @@ class Transformer(nn.Module):
         for layer_id in range(params.n_layers):
             self.layers.append(TransformerBlock(layer_id, params))
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
-        self.output = nn.Linear(params.dim, params.vocab_size, bias=False)
+        self.output = LINEAR_CLASS(params.dim, params.vocab_size, bias=False)
 
         # share the unembedding parameters with the embedding parameters
         self.tok_embeddings.weight = self.output.weight # https://paperswithcode.com/method/weight-tying
@@ -239,7 +246,7 @@ class Transformer(nn.Module):
         self.last_loss = None
 
     def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
+        if isinstance(module, LINEAR_CLASS):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
