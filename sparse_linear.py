@@ -69,15 +69,19 @@ class SparseLinear(nn.Module):
 
     def _rigl_step(self):
         """Applies the RigL sparse-to-sparse training strategy without decay or scheduling."""
+
+        if self.previous_grads is None:
+            return
         
         device = self.weight.device
         # target_sparsity = self.sparse_fraction  # Fixed sparsity level
         target_num_dense = self.target_num_dense
 
         # Calculate scores for dropping and growing
-        weight_magnitudes = torch.abs(self.weight.data).to(device)
+        weight_magnitudes = torch.abs(self.weight).to(device)
         grad_magnitudes = torch.abs(self.previous_grads).to(device)
 
+        print(grad_magnitudes.mean())
         
         exit()
 
